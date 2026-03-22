@@ -1,26 +1,83 @@
-# Claude Code 环境一键复刻指南
+# TalkLingo Claude Code 全局环境配置指南
 
-> 本文档用于在 **Claude Code** 中快速复刻完整的开发环境配置。
-> 基于 Claude Code v2.1.80 | macOS | 导出日期：2026-03-21
-
----
-
-## 使用方式
-
-打开终端，启动 Claude Code，将下方对应步骤的 prompt 粘贴发送即可。Claude 会自动执行所有操作。
-
-> 建议按顺序执行 Step 1 → Step 4，每步确认成功后再进行下一步。
+> 本文档包含 Claude Code 全局配置（~/.claude/），供团队成员从零搭建同样的开发环境。
+> 项目级配置（.claude/）已入 git，clone 仓库即可获得。
+>
+> 生成日期：2026-03-22
 
 ---
 
-## Step 1: 写入全局配置 settings.json
+## 1. 环境概览
 
-将以下内容发送给 Claude Code：
+### 1.1 配置文件树状图
 
 ```
-请帮我配置 Claude Code 全局设置。
-将以下内容写入 ~/.claude/settings.json（如果文件已存在，请先备份再覆盖）：
+~/.claude/                          # 全局配置（用户级，本文档覆盖范围）
+├── settings.json                   # 权限、hooks、插件、市场注册
+├── mcpServers.json                 # MCP 服务器连接配置
+└── CLAUDE.md                       # 全局工作指南
+```
 
+### 1.2 全局 vs 项目配置
+
+| 层级 | 位置 | 作用 | 来源 |
+|------|------|------|------|
+| 全局 | `~/.claude/` | 用户级权限、通用 hooks、MCP 服务器、插件 | **本文档 + 安装脚本** |
+| 项目 | `.claude/` + `CLAUDE.md` | hooks、rules、agents、skills | **git clone 自动获得** |
+
+---
+
+## 2. 前置条件
+
+### 2.1 Claude Code CLI
+
+```bash
+npm install -g @anthropic-ai/claude-code
+claude --version
+```
+
+### 2.2 Node.js (v18+)
+
+```bash
+node --version  # >= 18.x
+```
+
+### 2.3 gh CLI (GitHub MCP)
+
+```bash
+brew install gh
+gh auth login
+```
+
+### 2.4 pnpm (前端检查)
+
+```bash
+npm install -g pnpm
+```
+
+### 2.5 Go 工具链
+
+```bash
+go version  # Go 1.26+
+go install github.com/bufbuild/buf/cmd/buf@latest
+go install github.com/zeromicro/go-zero/tools/goctl@latest
+```
+
+### 2.6 可选：AgentSys
+
+```bash
+npm install -g agentsys
+cargo install ast-grep
+agentsys --tool claude
+```
+
+---
+
+## 3. settings.json
+
+**路径：** `~/.claude/settings.json`
+
+```json
 {
   "permissions": {
     "allow": [
@@ -38,15 +95,7 @@
       "NotebookEdit",
       "Skill",
       "EnterPlanMode",
-      "ExitPlanMode",
-      "mcp__Desktop_Commander__*",
-      "mcp__Context7__*",
-      "mcp__ToolUniverse__*",
-      "mcp__Claude_in_Chrome__*",
-      "mcp__Claude_Preview__*",
-      "mcp__mcp-registry__*",
-      "mcp__AWS_API_MCP_Server__*",
-      "mcp__Figma__*"
+      "ExitPlanMode"
     ],
     "deny": [
       "Bash(rm -rf /*)",
@@ -68,9 +117,12 @@
       "Bash(sudo dd *)",
       "Bash(echo *> /etc/passwd)",
       "Bash(echo *> /etc/shadow)"
-    ]
+    ],
+    "defaultMode": "plan"
   },
-  "model": "sonnet",
+  "env": {
+    "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1"
+  },
   "hooks": {
     "Stop": [
       {
@@ -79,6 +131,11 @@
           {
             "type": "command",
             "command": "git rev-parse --git-dir >/dev/null 2>&1 && git stash push -m \"claude-checkpoint-$(date +%Y%m%d%H%M%S)\" --include-untracked 2>/dev/null; true"
+          },
+          {
+            "type": "command",
+            "command": "[ -n \"$TMUX_PANE\" ] && tty_path=$(tmux display-message -p -t \"$TMUX_PANE\" '#{pane_tty}') && printf '\\a' > \"$tty_path\"; true",
+            "timeout": 10
           }
         ]
       }
@@ -100,7 +157,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "cat workflow-status.json 2>/dev/null || echo '{\"status\":\"no workflow state found\"}'"
+            "command": "[ -f workflow-status.json ] && cat workflow-status.json; exit 0"
           }
         ]
       }
@@ -117,40 +174,123 @@
       }
     ]
   },
-  "enabledPlugins": {},
+  "enabledPlugins": {
+    "superpowers@claude-plugins-official": true,
+    "gopls-lsp@claude-plugins-official": true,
+    "commit-commands@claude-plugins-official": true,
+    "code-review@claude-plugins-official": true,
+    "security-guidance@claude-plugins-official": true,
+    "claude-md-management@claude-plugins-official": true,
+    "explanatory-output-style@claude-plugins-official": true,
+    "typescript-lsp@claude-plugins-official": true,
+    "skill-creator@claude-plugins-official": true,
+    "ship@agentsys": true,
+    "telegram@claude-plugins-official": true
+  },
   "extraKnownMarketplaces": {
     "anthropic-agent-skills": {
-      "source": { "source": "github", "repo": "anthropics/skills" }
+      "source": {
+        "source": "github",
+        "repo": "anthropics/skills"
+      }
     },
     "agentsys": {
-      "source": { "source": "github", "repo": "agent-sh/agentsys" }
+      "source": {
+        "source": "github",
+        "repo": "agent-sh/agentsys"
+      }
     },
     "claude-plugins-official": {
-      "source": { "source": "github", "repo": "anthropics/claude-plugins-official" }
+      "source": {
+        "source": "github",
+        "repo": "anthropics/claude-plugins-official"
+      }
     }
-  }
+  },
+  "voiceEnabled": true
 }
-
-注意：
-- permissions.allow 中的 MCP 权限按你实际使用的 MCP 服务器按需增删
-- deny 列表是安全黑名单，防止危险命令执行
-- hooks 说明：
-  - Stop/SubagentStop: 自动 git stash 创建检查点
-  - SessionStart: 读取 workflow-status.json 恢复断点
-  - UserPromptSubmit: 提醒使用完整工具集
 ```
 
-> 完成后重启 Claude Code 使配置生效，再继续 Step 2。
+### 各字段说明
+
+| 字段 | 说明 |
+|------|------|
+| `permissions.allow` | 白名单工具，`Bash(*)` 允许所有 bash 命令 |
+| `permissions.deny` | 黑名单，阻止 rm -rf /、管道注入、磁盘擦除等危险命令 |
+| `permissions.defaultMode` | 默认权限模式为 plan（需确认） |
+| `env.CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS` | 启用 Agent Teams 实验功能 |
+| `hooks.Stop` | 会话结束时自动 git stash 保存 + tmux 响铃通知 |
+| `hooks.SubagentStop` | 子 Agent 结束时同样 git stash 保存 |
+| `hooks.SessionStart` | 加载 workflow-status.json（AgentSys 工作流状态） |
+| `hooks.UserPromptSubmit` | 每次提交时提醒可用工具集（Superpowers） |
+| `enabledPlugins` | 11 个全局插件（详见下方插件清单） |
+| `extraKnownMarketplaces` | 3 个插件市场（anthropics/skills, agentsys, claude-plugins-official） |
+| `voiceEnabled` | 启用语音输入 |
 
 ---
 
-## Step 2: 写入全局指令 CLAUDE.md
+## 4. mcpServers.json
 
-将以下内容发送给 Claude Code：
+**路径：** `~/.claude/mcpServers.json`
 
+```json
+{
+  "servers": {
+    "desktop-commander": {
+      "enabled": true,
+      "timeout": 30000,
+      "retries": 2,
+      "description": "本地文件、进程、搜索操作"
+    },
+    "context7": {
+      "enabled": true,
+      "timeout": 15000,
+      "cache": true,
+      "description": "文档库查询（Go、go-zero、MySQL、Redis、ClickHouse 等官方文档）"
+    },
+    "sonatype-guide": {
+      "enabled": true,
+      "timeout": 15000,
+      "description": "依赖安全检查（CVE、许可证）"
+    }
+  },
+  "global": {
+    "logLevel": "info",
+    "defaultTimeout": 30000,
+    "retryStrategy": "exponential",
+    "maxRetries": 2,
+    "circuitBreaker": {
+      "enabled": true,
+      "threshold": 5,
+      "timeout": 60000
+    }
+  },
+  "monitoring": {
+    "enabled": true,
+    "metricsPath": "~/.claude/sessions/mcp-metrics.json",
+    "trackPerformance": true,
+    "trackErrors": true
+  }
+}
 ```
-请将以下内容写入 ~/.claude/CLAUDE.md（如果文件已存在，请先备份再覆盖）：
 
+### 各字段说明
+
+| 字段 | 说明 |
+|------|------|
+| `servers.desktop-commander` | 本地文件系统和进程管理 |
+| `servers.context7` | 技术文档查询（带缓存） |
+| `servers.sonatype-guide` | 依赖安全扫描（CVE、许可证） |
+| `global.circuitBreaker` | 熔断机制，连续 5 次失败后暂停 60s |
+| `monitoring` | 启用性能和错误追踪，指标写入 `~/.claude/sessions/mcp-metrics.json` |
+
+---
+
+## 5. CLAUDE.md
+
+**路径：** `~/.claude/CLAUDE.md`
+
+```markdown
 # 全局 Claude 工作指南
 
 ## 语言要求（最高优先级）
@@ -191,140 +331,45 @@
 
 ---
 
-## Step 3: 安装 Marketplace 和插件
+## 6. 全局插件清单
 
-将以下内容发送给 Claude Code：
-
-```
-请帮我在 Claude Code 中安装以下必需插件。
-
-第一步：添加 3 个 Marketplace：
-- claude plugins marketplace add anthropics/claude-plugins-official
-- claude plugins marketplace add anthropics/skills
-- claude plugins marketplace add agent-sh/agentsys
-
-第二步：从 claude-plugins-official 安装 10 个官方插件：
-- superpowers（核心技能系统：TDD、调试、协作模式）
-- gopls-lsp（Go 语言智能补全、诊断、跳转）
-- commit-commands（/commit、/push、/pr 快捷命令）
-- code-review（多 Agent 代码审查，带置信度评分）
-- security-guidance（OWASP 安全漏洞检测与修复建议）
-- claude-md-management（CLAUDE.md 质量审计与自动更新）
-- explanatory-output-style（代码实现时附带设计决策说明）
-- linear（Linear 任务管理集成）
-- typescript-lsp（TypeScript 语言服务）
-- skill-creator（自定义技能创建向导）
-
-安装命令格式：claude plugins install <插件名>@claude-plugins-official
-
-第三步：从 agentsys 安装第三方插件：
-- ship（PR 创建 -> CI 监控 -> 自动合并全流程）
-
-安装命令：claude plugins install ship@agentsys
-
-第四步：安装完成后运行 claude plugins list 确认 11 个插件全部 enabled。
-```
-
----
-
-## Step 4: 安装系统依赖（按需）
-
-将以下内容发送给 Claude Code：
-
-```
-请检查并安装以下系统依赖（已有的跳过）：
-
-必需：
-- Git >= 2.39（macOS 自带，确认版本即可）
-- Go + gopls（gopls-lsp 插件需要）：brew install go && go install golang.org/x/tools/gopls@latest
-- Node.js（typescript-lsp 插件需要）：brew install node
-
-可选：
-- claude-hooks（用 TypeScript 编写复杂 hook 逻辑，当前配置不需要）：brew install claude-hooks
-
-请逐个检查是否已安装，缺少的才安装，已有的报告版本即可。
-```
-
----
-
-## Step 5: 验证全部配置
-
-将以下内容发送给 Claude Code：
-
-```
-请验证 Claude Code 环境配置是否完整：
-
-1. 运行 claude --version，确认版本
-2. 运行 claude plugins marketplace list，确认有 3 个 marketplace：
-   - claude-plugins-official
-   - anthropic-agent-skills
-   - agentsys
-3. 运行 claude plugins list，确认 11 个插件全部 enabled
-4. 读取 ~/.claude/settings.json，确认包含 permissions、hooks、extraKnownMarketplaces
-5. 读取 ~/.claude/CLAUDE.md，确认包含语言要求、工作风格、验证规则、安全底线
-6. 检查系统依赖：git --version、go version、gopls version、node --version
-
-输出一份检查报告，标注每项是否通过。
-```
-
----
-
-## 配置速查表
-
-### 权限模型
-
-| 类别 | 说明 |
-|------|------|
-| `Bash(*)` | 允许所有 shell 命令（受 deny 黑名单约束） |
-| `Read/Write/Edit/...` | 文件操作工具免确认 |
-| `mcp__*` | 指定 MCP 服务器工具免确认 |
-| `deny` 列表 | 阻止 `rm -rf /`、管道注入、磁盘擦除等危险命令 |
-
-### Hooks
-
-| 事件 | 触发时机 | 行为 |
-|------|----------|------|
-| Stop / SubagentStop | Claude 完成回答时 | 在 git 仓库中自动 `git stash` 创建检查点 |
-| SessionStart | 新会话开始时 | 读取 `workflow-status.json` 恢复工作流断点 |
-| UserPromptSubmit | 每次发送消息时 | 提醒使用完整工具集（MCP、搜索、规划模式等） |
-
-### 插件一览
+### 6.1 启用的插件
 
 | 插件 | 来源 | 用途 |
 |------|------|------|
-| superpowers | official | 核心技能：TDD、调试、协作模式 |
-| gopls-lsp | official | Go 语言服务 |
-| typescript-lsp | official | TypeScript 语言服务 |
-| commit-commands | official | `/commit` `/push` `/pr` 快捷命令 |
-| code-review | official | 多 Agent 代码审查 |
-| security-guidance | official | 安全漏洞检测 |
-| claude-md-management | official | CLAUDE.md 管理 |
-| explanatory-output-style | official | 设计决策说明 |
-| linear | official | Linear 任务集成 |
-| skill-creator | official | 自定义技能创建 |
-| ship | agentsys | PR->CI->合并自动化 |
+| `superpowers` | claude-plugins-official | 增强工作流（brainstorming、TDD、plan 等） |
+| `gopls-lsp` | claude-plugins-official | Go Language Server 集成 |
+| `commit-commands` | claude-plugins-official | Git commit/push/PR 快捷命令 |
+| `code-review` | claude-plugins-official | PR 代码审查 |
+| `security-guidance` | claude-plugins-official | 安全编码指导 |
+| `claude-md-management` | claude-plugins-official | CLAUDE.md 维护 |
+| `explanatory-output-style` | claude-plugins-official | 教育性输出风格（Insight 面板） |
+| `typescript-lsp` | claude-plugins-official | TypeScript Language Server |
+| `skill-creator` | claude-plugins-official | Skill 创建和管理 |
+| `ship` | agentsys | PR 创建/CI 监控/合并 |
+| `telegram` | claude-plugins-official | Telegram 频道集成 |
 
-### CLAUDE.md 核心规则
+### 6.2 插件市场
 
-| 规则 | 内容 |
-|------|------|
-| 语言 | 对话简体中文，代码/commit 英文 |
-| 风格 | 直接执行、推荐方案、追踪根因 |
-| 验证 | Go: `go vet` + `go test -race`；TS: `tsc --noEmit` |
-| 安全 | 不硬编码密钥、不 push main、不用 panic() |
+| 市场 ID | GitHub 仓库 | 说明 |
+|---------|------------|------|
+| `claude-plugins-official` | `anthropics/claude-plugins-official` | Anthropic 官方插件 |
+| `agentsys` | `agent-sh/agentsys` | AgentSys 自动化插件 |
+| `anthropic-agent-skills` | `anthropics/skills` | Anthropic Agent Skills |
+
+插件通过 `enabledPlugins` 声明后，Claude Code 启动时自动从市场下载和加载。
 
 ---
 
-## 常见问题
+## 7. 复刻验证 Checklist
 
-**Q: 插件安装报 "not found in any configured marketplace"**
-→ 先运行 `claude plugins marketplace list` 确认 marketplace 已添加。缺少则用 Step 3 的 prompt 重新添加。
+安装完成后，逐项验证：
 
-**Q: Hook 报 `command not found` 错误**
-→ 确认 settings.json 中的 hook command 是本文档中的 `git stash` 版本，而非旧的 `claudekit-hooks` 版本。
-
-**Q: MCP 权限中的 UUID 型条目是什么**
-→ 这些是 Claude Desktop 中自定义 MCP 服务器的实例 ID，每台机器不同。按需在 `permissions.allow` 中添加你自己的 `mcp__<server>__*`。
-
-**Q: 想用 Opus 而不是 Sonnet**
-→ 将 settings.json 中 `"model": "sonnet"` 改为 `"model": "opus"`。
+- [ ] `~/.claude/settings.json` 存在且 JSON 合法
+- [ ] `~/.claude/mcpServers.json` 存在且 JSON 合法
+- [ ] `~/.claude/CLAUDE.md` 存在
+- [ ] `claude` 启动后 Stop hook 正常（会话结束时 git stash 自动保存）
+- [ ] MCP 服务器连接正常（GitHub MCP 可通过 `gh` 操作 issue/PR）
+- [ ] 所有插件加载（superpowers、gopls-lsp、commit-commands 等）
+- [ ] 对话使用简体中文，commit message 使用英文
+- [ ] Agent Teams 功能可用（`CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1`）
